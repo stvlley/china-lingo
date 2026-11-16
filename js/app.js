@@ -13,7 +13,7 @@ UNITS.forEach((u,ui)=>{u.items=u.items.map((r,ii)=>{const chunks=r[0].split(" ")
 const BYID=Object.fromEntries(ALL.map(x=>[x.id,x]));
 
 /* ================= STATE ================= */
-const APP_VERSION="1.1.0";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
+const APP_VERSION="1.1.1";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
 let S;try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
 if(!S){let old=null;try{old=JSON.parse(localStorage.getItem("scm-v1"))}catch(e){}S=old?{xp:old.xp||0,streak:old.streak||0,last:old.last||"",done:old.done||{},items:old.items||{},addr:old.addr||""}:{}}
 S=Object.assign({xp:0,gems:50,hearts:MAXH,heartTs:Date.now(),streak:0,best:0,last:"",days:[],freezes:0,goal:30,done:{},items:{},addr:"",daily:{d:""},chests:{},ach:{},stats:{lessons:0,perfect:0,practice:0,bestCombo:0},sound:true,haptic:true,silentSound:true,speak:true,noSpeakUntil:0,installDismissed:0},S);

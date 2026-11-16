@@ -1,5 +1,5 @@
 /* China Lingo service worker: offline app shell + stale-while-revalidate. */
-const VERSION = "cl-1.1.0";
+const VERSION = "cl-1.1.1";
 const SHELL = [
   "./",
   "./index.html",
@@ -20,7 +20,8 @@ const SHELL = [
 ];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)));
+  /* cache: "reload" skips the HTTP cache so an update never re-caches stale files */
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))));
 });
 
 self.addEventListener("activate", e => {
