@@ -9,7 +9,7 @@ A gamified, installable (PWA) Mandarin trainer built for dealing with Chinese su
 - **Game loop**: hearts (refill every 30 min), gems, XP and levels, day streaks with streak freezes, combo banners, crowns (up to Legendary), unit chests, daily quests, 15 achievements, and an end-of-lesson celebration sequence.
 - **Feedback**: Web Audio sound effects, haptics (Android vibration; iOS 18+ system taps), Mandarin text-to-speech, confetti, and an original mascot (Bāo 包, the shipping box).
 - **SOS tab**: China emergency numbers, emergency phrases, and a "show to driver" address card.
-- **PWA**: installable, works offline, update banner when a new version ships, home-screen shortcuts (SOS, Practice, Phrasebook).
+- **PWA**: installable, works offline, updates apply automatically (never mid-lesson), home-screen shortcuts (SOS, Practice, Phrasebook).
 
 ## Project layout
 
@@ -40,7 +40,7 @@ Service workers need `http://localhost` or HTTPS; opening the file directly skip
 
 `.github/workflows/pages.yml` deploys to GitHub Pages on every push to `main`. Enable it once in **Settings → Pages → Build and deployment → Source: GitHub Actions**.
 
-When you ship a change, bump `VERSION` in `sw.js` (and `APP_VERSION` in `js/app.js`) so installed apps pick up the update and show the "new version" banner.
+When you ship a change, bump `VERSION` in `sw.js` (and `APP_VERSION` in `js/app.js`) so installed apps pick up the update (it applies automatically on next launch, or after the current lesson).
 
 ## Sound & haptics notes
 

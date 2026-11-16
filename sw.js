@@ -1,5 +1,5 @@
 /* China Lingo service worker: network-first app code, cache-first assets, full offline fallback. */
-const VERSION = "cl-1.1.2";
+const VERSION = "cl-1.1.3";
 const SHELL = [
   "./",
   "./index.html",
@@ -20,6 +20,7 @@ const SHELL = [
 ];
 
 self.addEventListener("install", e => {
+  self.skipWaiting();
   /* cache: "reload" skips the HTTP cache so an update never re-caches stale files */
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))));
 });

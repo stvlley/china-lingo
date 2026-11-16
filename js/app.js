@@ -13,7 +13,7 @@ UNITS.forEach((u,ui)=>{u.items=u.items.map((r,ii)=>{const chunks=r[0].split(" ")
 const BYID=Object.fromEntries(ALL.map(x=>[x.id,x]));
 
 /* ================= STATE ================= */
-const APP_VERSION="1.1.2";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
+const APP_VERSION="1.1.3";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
 let S;try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
 if(!S){let old=null;try{old=JSON.parse(localStorage.getItem("scm-v1"))}catch(e){}S=old?{xp:old.xp||0,streak:old.streak||0,last:old.last||"",done:old.done||{},items:old.items||{},addr:old.addr||""}:{}}
 S=Object.assign({xp:0,gems:50,hearts:MAXH,heartTs:Date.now(),streak:0,best:0,last:"",days:[],freezes:0,goal:30,done:{},items:{},addr:"",daily:{d:""},chests:{},ach:{},stats:{lessons:0,perfect:0,practice:0,bestCombo:0},sound:true,haptic:true,silentSound:true,speak:true,noSpeakUntil:0,installDismissed:0},S);
@@ -254,7 +254,7 @@ window.addEventListener("popstate",()=>{if(ignorePop){ignorePop=false;return}
   if(SES){if(SES.done){SES.done="left";endLesson();return}try{history.pushState({lesson:1},"")}catch(e){}quitAsk()}});
 function hdr(){const lh=$("#lh");if(!lh)return;lh.innerHTML=SES.opt.practice?"🏋️ Practice":`❤️ <span>${S.hearts}</span>`}
 function quitAsk(){if(SES&&SES.done)return endLesson();modal(`${bao("sad",84,"shk")}<h3>Wait, don't go!</h3><p>You'll lose your progress in this ${SES.opt.practice?"practice session":"lesson"}.</p><button class="btn blue" id="qk">Keep learning</button><button class="btn link" id="qe" style="color:var(--r)">End session</button>`,true);$("#qk").onclick=closeModal;$("#qe").onclick=()=>{closeModal();endLesson(true)}}
-function endLesson(){hush();if(history.state&&history.state.lesson){ignorePop=true;try{history.back()}catch(e){ignorePop=false}}$("#overlay").innerHTML="";SES=null;render();scrollTo(0,0)}
+function endLesson(){hush();if(window.__pendingUpdate){window.__applyUpdate();return}if(history.state&&history.state.lesson){ignorePop=true;try{history.back()}catch(e){ignorePop=false}}$("#overlay").innerHTML="";SES=null;render();scrollTo(0,0)}
 function step(){const s=SES;$("#pg").style.width=(s.i/s.q.length*100)+"%";
   if(s.i>=s.q.length)return finish();
   if(!s.half&&s.i>=Math.floor(s.q.length/2)&&s.i>2){s.half=true;banner("cheer","Halfway there!","加油 jiāyóu · keep it up!")}
