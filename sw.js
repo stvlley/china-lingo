@@ -1,5 +1,6 @@
 /* China Lingo service worker: network-first app code, cache-first assets, full offline fallback. */
-const VERSION = "cl-1.1.3";
+const VERSION = "cl-1.2.0";
+const AUDIO = "cl-audio"; /* recorded audio: hashed, immutable file names, kept across versions */
 const SHELL = [
   "./",
   "./index.html",
@@ -22,13 +23,16 @@ const SHELL = [
 self.addEventListener("install", e => {
   self.skipWaiting();
   /* cache: "reload" skips the HTTP cache so an update never re-caches stale files */
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })))));
+  e.waitUntil(caches.open(VERSION).then(async c => {
+    await c.addAll(SHELL.map(u => new Request(u, { cache: "reload" })));
+    try { await c.add(new Request("./audio/index.json", { cache: "reload" })); } catch (err) { /* no recordings yet */ }
+  }));
 });
 
 self.addEventListener("activate", e => {
   e.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)));
+    await Promise.all(keys.filter(k => k !== VERSION && k !== AUDIO).map(k => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -57,8 +61,20 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  /* app code (js/css/manifest): network-first so updates land immediately; cache when offline */
-  if (/\.(js|css|webmanifest)$/.test(url.pathname)) {
+  /* recorded audio: cache-first forever (file names change when content changes) */
+  if (/\/audio\/(sfx|zh)\//.test(url.pathname)) {
+    e.respondWith((async () => {
+      const cache = await caches.open(AUDIO);
+      const hit = await cache.match(req, { ignoreSearch: true });
+      if (hit) return hit;
+      try { const res = await fetch(req); if (res && res.ok) cache.put(req, res.clone()); return res; }
+      catch (err) { return Response.error(); }
+    })());
+    return;
+  }
+
+  /* app code (js/css/json/manifest): network-first so updates land immediately; cache when offline */
+  if (/\.(js|css|json|webmanifest)$/.test(url.pathname)) {
     e.respondWith((async () => {
       const cache = await caches.open(VERSION);
       try {
@@ -66,7 +82,7 @@ self.addEventListener("fetch", e => {
         if (fresh && fresh.ok) cache.put(req, fresh.clone());
         return fresh;
       } catch (err) {
-        return (await cache.match(req, { ignoreSearch: true })) || Response.error();
+        return (await caches.match(req, { ignoreSearch: true })) || Response.error();
       }
     })());
     return;

@@ -1,0 +1,74 @@
+name: Generate audio (ElevenLabs)
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Regenerate every file (e.g. after changing the voice settings)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "js/data.js"
+      - "scripts/generate-audio.mjs"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: audio
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check API key
+        id: key
+        env:
+          KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          msg="Add your ElevenLabs API key as a repository secret named ELEVENLABS_API_KEY (Settings → Secrets and variables → Actions), then run this workflow."
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then echo "::error::$msg"; exit 1; fi
+          echo "::warning::$msg Skipping audio generation."
+
+      - name: Generate sound effects and phrase recordings
+        if: steps.key.outputs.ok == 'true'
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ vars.ELEVENLABS_VOICE_ID }}
+          ELEVENLABS_MODEL_ID: ${{ vars.ELEVENLABS_MODEL_ID }}
+          FORCE: ${{ inputs.force }}
+        run: node scripts/generate-audio.mjs
+
+      - name: Commit audio
+        if: steps.key.outputs.ok == 'true'
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A audio
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No audio changes."
+          else
+            git commit -m "Generate audio with ElevenLabs"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Redeploy site
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main

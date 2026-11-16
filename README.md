@@ -42,6 +42,22 @@ Service workers need `http://localhost` or HTTPS; opening the file directly skip
 
 When you ship a change, bump `VERSION` in `sw.js` (and `APP_VERSION` in `js/app.js`) so installed apps pick up the update (it applies automatically on next launch, or after the current lesson).
 
+## Audio (ElevenLabs)
+
+All sound effects and a studio-quality Mandarin recording of every phrase are generated with ElevenLabs by `scripts/generate-audio.mjs`, run in GitHub Actions (**Generate audio (ElevenLabs)**).
+
+One-time setup, in **Settings → Secrets and variables → Actions**:
+
+| Name | Type | Value |
+|---|---|---|
+| `ELEVENLABS_API_KEY` | Secret | your ElevenLabs API key |
+| `ELEVENLABS_VOICE_ID` | Variable | a native Mandarin voice (add one from the ElevenLabs Voice Library to *My Voices*, copy its ID) |
+| `ELEVENLABS_MODEL_ID` | Variable (optional) | defaults to `eleven_multilingual_v2` |
+
+Then **Actions → Generate audio (ElevenLabs) → Run workflow**. It writes `audio/sfx/*.mp3`, `audio/zh/*.mp3` and `audio/index.json`, commits them and redeploys. It re-runs automatically when `js/data.js` changes and only generates what's new. Tick **force** to regenerate everything (e.g. after changing voice). Edit the sound prompts in the `SFX` table in the script.
+
+Until recordings exist, the app uses synthesized effects and the device's Chinese voice. Recordings are cached for offline use.
+
 ## Sound & haptics notes
 
 - Audio unlocks on your first tap (browsers require a gesture).

@@ -13,7 +13,7 @@ UNITS.forEach((u,ui)=>{u.items=u.items.map((r,ii)=>{const chunks=r[0].split(" ")
 const BYID=Object.fromEntries(ALL.map(x=>[x.id,x]));
 
 /* ================= STATE ================= */
-const APP_VERSION="1.1.3";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
+const APP_VERSION="1.2.0";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
 let S;try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
 if(!S){let old=null;try{old=JSON.parse(localStorage.getItem("scm-v1"))}catch(e){}S=old?{xp:old.xp||0,streak:old.streak||0,last:old.last||"",done:old.done||{},items:old.items||{},addr:old.addr||""}:{}}
 S=Object.assign({xp:0,gems:50,hearts:MAXH,heartTs:Date.now(),streak:0,best:0,last:"",days:[],freezes:0,goal:30,done:{},items:{},addr:"",daily:{d:""},chests:{},ach:{},stats:{lessons:0,perfect:0,practice:0,bestCombo:0},sound:true,haptic:true,silentSound:true,speak:true,noSpeakUntil:0,installDismissed:0},S);
@@ -146,7 +146,7 @@ function lessonSheet(id){const[ui,li]=id.split("-").map(Number),u=UNITS[ui],L=u.
   modal(box);$("#modal .mbox").style.background=u.c;
   $("#ls-go").onclick=()=>{closeModal();if(!S.hearts)return heartsModal(false);SFX.whoosh();startSession(L,{lesson:id,learn:true})}}
 function openChest(ui){if(S.chests[ui])return toast("Already opened");if(!unitDone(ui)){buzz(30);return toast("🔒 Finish every lesson in this unit to unlock")}
-  S.chests[ui]=1;const g=20+Math.floor(Math.random()*11);S.gems+=g;save();SFX.coin();setTimeout(SFX.fanfare,200);confetti(90);buzz([20,40,20]);
+  S.chests[ui]=1;const g=20+Math.floor(Math.random()*11);S.gems+=g;save();SFX.chest();setTimeout(SFX.coin,700);confetti(90);buzz([20,40,20]);
   modal(`<div style="font-size:90px;animation:popin .5s">🎁</div><h3>Unit chest!</h3><p>You earned <b style="color:var(--b)">💎${g}</b> gems</p><button class="btn" id="cc">Nice!</button>`,true);$("#cc").onclick=()=>{closeModal();render()}}
 
 function practiceView(){const si=ALL.filter(x=>seen(x.id)),weak=si.filter(x=>strength(x.id)<.75);
@@ -189,6 +189,7 @@ function meView(){const lv=levelOf(S.xp),a=lvlFloor(lv),b=lvlFloor(lv+1),got=ACH
   <div class="tog"><span>🔕 Play sounds in silent mode<br><small style="color:var(--mute);font-weight:700">iPhone ring switch off. Note: pauses other music</small></span><button class="sw ${S.silentSound?"on":""}" data-tog="silentSound"></button></div>
   <div class="tog"><span>📳 Haptics<br><small style="color:var(--mute);font-weight:700">${FX.canVibrate?"Vibration patterns":"iPhone taps (iOS 18+)"}</small></span><button class="sw ${S.haptic?"on":""}" data-tog="haptic"></button></div>
   ${window.ASR&&ASR.supported?`<div class="tog"><span>🎙️ Speaking exercises<br><small style="color:var(--mute);font-weight:700">Uses the microphone</small></span><button class="sw ${S.speak?"on":""}" data-tog="speak"></button></div>`:""}
+  <div class="tog"><span>🗣️ Mandarin voice<br><small style="color:var(--mute);font-weight:700">${FX.hasRecordings()?"Studio recordings (ElevenLabs)":"Device text-to-speech"}</small></span><span style="font-size:20px">${FX.hasRecordings()?"✅":"📱"}</span></div>
   <div style="margin:16px 16px 0"><button class="btn ghost" id="fxtest">▶ Test sound, voice &amp; haptics</button></div>
   ${appCard()}
   <div class="grp">Your data</div>
@@ -213,7 +214,7 @@ function bindAll(v){
   v.querySelectorAll("[data-tog]").forEach(b=>b.onclick=()=>{S[b.dataset.tog]=!S[b.dataset.tog];if(b.dataset.tog==="speak")S.noSpeakUntil=0;save();FX.applySession();tick();if(b.dataset.tog==="haptic"&&S.haptic)buzz(20);render()});
   v.querySelectorAll("[data-install]").forEach(b=>b.onclick=()=>PWA.prompt().then(()=>render()));
   v.querySelectorAll("[data-dismiss-install]").forEach(b=>b.onclick=()=>{S.installDismissed=Date.now();save();render()});
-  const ft=v.querySelector("#fxtest");if(ft)ft.onclick=()=>{SFX.ok();buzz([20,60,20]);setTimeout(SFX.combo,450);setTimeout(()=>say("你好，欢迎！"),1100);toast(`Sound ${S.sound?"on":"off"} · Haptics ${S.haptic?(FX.canVibrate?"vibrate":"iPhone tap"):"off"}`)};
+  const ft=v.querySelector("#fxtest");if(ft)ft.onclick=()=>{SFX.ok();buzz([20,60,20]);setTimeout(SFX.combo,450);setTimeout(()=>say("你好，欢迎！"),1100);const st=FX.state();toast(`Sound ${S.sound?"on":"off"} (${st.ctx}) · Voice: ${st.recordings?"recorded":"device"} · Haptics ${S.haptic?(FX.canVibrate?"vibrate":"iPhone tap"):"off"}`)};
   const ex=v.querySelector("#exp");if(ex)ex.onclick=async()=>{const code="CL1."+btoa(unescape(encodeURIComponent(JSON.stringify(S))));try{await navigator.clipboard.writeText(code);toast("📋 Backup code copied")}catch(e){modal(`<h3>Backup code</h3><p>Copy this text:</p><textarea style="width:100%;height:120px;font-size:11px" readonly>${esc(code)}</textarea><button class="btn" id="bk">Done</button>`,true);$("#bk").onclick=closeModal}};
   const im=v.querySelector("#imp");if(im)im.onclick=()=>{modal(`<h3>Restore progress</h3><p>Paste a backup code. This replaces progress on this device.</p><textarea id="impt" style="width:100%;height:110px;font-size:12px;border:2px solid var(--line);border-radius:12px;padding:8px"></textarea><button class="btn" id="impy" style="margin-top:12px">Restore</button><button class="btn link" id="impn">Cancel</button>`,true);$("#impn").onclick=closeModal;$("#impy").onclick=()=>{try{const t=$("#impt").value.trim();const o=JSON.parse(decodeURIComponent(escape(atob(t.replace(/^CL1\./,"")))));if(typeof o.xp!=="number")throw 0;localStorage.setItem(KEY,JSON.stringify(o));location.reload()}catch(e){toast("❌ That code didn't work");buzz([40,50,40])}}};
   const bh=v.querySelector("#buy-h");if(bh)bh.onclick=()=>{S.gems-=REFILL;S.hearts=MAXH;S.heartTs=Date.now();save();SFX.coin();toast("❤️ Hearts refilled!");render()};
@@ -364,7 +365,7 @@ function finish(){const s=SES,d=D();s.done=true;document.querySelectorAll('.bann
       ${s.mist.size?`<div class="mist"><h4>Review your mistakes</h4>${[...s.mist].map(id=>rowHTML(BYID[id])).join("").replace(/margin:0 16px/g,"")}</div>`:""}</div>`,
     fx:()=>{SFX.fanfare();confetti();buzz([30,60,30,60,80]);countUp($("#k1"),xp,900);countUp($("#k2"),acc,900,"","%")}}});
   newUnit.forEach(ui=>screens.push(()=>({html:`<div class="end"><div style="font-size:90px;animation:popin .5s">${UNITS[ui].ic}</div><h2 style="color:${UNITS[ui].c}">Unit ${ui+1} complete!</h2><p class="sub">You finished <b>${esc(UNITS[ui].t)}</b>. A reward chest is waiting on the path 🎁</p>${bao("cheer",100,"jump")}</div>`,fx:()=>{SFX.level();confetti(180)}})));
-  if(ext)screens.push(()=>({html:`<div class="end"><div class="flame">🔥</div><div class="bignum" id="sk">${Math.max(0,S.streak-1)}</div><h2 style="color:var(--o);margin-top:4px">day streak!</h2><p class="sub">${S.streak===1?"You started a streak! Come back tomorrow to keep it alive.":[3,7,14,30,50,100,365].includes(S.streak)?`🏅 ${S.streak}-day milestone! 坚持 jiānchí, keep at it.`:"You extended your streak. 加油 jiāyóu!"}</p>${weekHTML()}${S.freezes?`<p class="sub">🧊 ${S.freezes} streak freeze${S.freezes>1?"s":""} equipped</p>`:""}</div>`,fx:()=>{setTimeout(()=>{const e=$("#sk");if(e){e.textContent=S.streak;e.classList.add("pop")}SFX.combo();buzz([20,40,60])},700)}}));
+  if(ext)screens.push(()=>({html:`<div class="end"><div class="flame">🔥</div><div class="bignum" id="sk">${Math.max(0,S.streak-1)}</div><h2 style="color:var(--o);margin-top:4px">day streak!</h2><p class="sub">${S.streak===1?"You started a streak! Come back tomorrow to keep it alive.":[3,7,14,30,50,100,365].includes(S.streak)?`🏅 ${S.streak}-day milestone! 坚持 jiānchí, keep at it.`:"You extended your streak. 加油 jiāyóu!"}</p>${weekHTML()}${S.freezes?`<p class="sub">🧊 ${S.freezes} streak freeze${S.freezes>1?"s":""} equipped</p>`:""}</div>`,fx:()=>{setTimeout(()=>{const e=$("#sk");if(e){e.textContent=S.streak;e.classList.add("pop")}SFX.streak();buzz([20,40,60])},700)}}));
   if(s.gx0<S.goal&&d.xp>=S.goal)screens.push(()=>({html:`<div class="end"><div style="font-size:90px;animation:popin .5s">🎯</div><h2 style="color:var(--y)">Daily goal reached!</h2><p class="sub">${d.xp} / ${S.goal} XP today. That's how habits are built.</p>${bao("cheer",100,"jump")}</div>`,fx:()=>{SFX.fanfare();confetti(100)}}));
   if(newQ.length)screens.push(()=>({html:`<div class="end">${bao("wow",100)}<h2 style="color:var(--o)">Quest${newQ.length>1?"s":""} complete!</h2><p class="sub">Open your chest${newQ.length>1?"s":""} to collect gems.</p><div style="text-align:left">${newQ.map(i=>{const q=d.q[i];return `<div class="quest"><span class="ic">${q.ic}</span><div class="t"><b>${esc(q.t)}</b><div class="bar"><i style="width:100%;background:var(--g)"></i><em>${q.goal} / ${q.goal}</em></div></div><button class="qchest ready" data-endclaim="${i}">🎁</button></div>`}).join("")}</div></div>`,
     fx:()=>{SFX.coin();document.querySelectorAll("[data-endclaim]").forEach(b=>b.onclick=()=>{const i=+b.dataset.endclaim;if(d.claimed.includes(i))return;d.claimed.push(i);S.gems+=d.q[i].rw;save();stats();b.textContent="📭";b.classList.remove("ready");b.insertAdjacentHTML("afterend",`<b style="color:var(--b);animation:popin .3s">+💎${d.q[i].rw}</b>`);SFX.coin();confetti(50);buzz(20)})}}));
@@ -376,3 +377,4 @@ function finish(){const s=SES,d=D();s.done=true;document.querySelectorAll('.bann
 document.addEventListener("keydown",e=>{if(!SES||$("#modal").innerHTML)return;if(/^[1-4]$/.test(e.key)){const o=document.querySelectorAll(".opt")[+e.key-1];o&&!o.disabled&&o.click()}else if(e.key==="Enter"){const g=$("#go");g&&!g.disabled&&g.click()}});
 
 D();checkStreak();render();setInterval(stats,30000);
+FX.ready.then(()=>{if(!SES&&tab==="me")render()});
