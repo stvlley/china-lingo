@@ -1,5 +1,5 @@
-/* China Lingo service worker: offline app shell + stale-while-revalidate. */
-const VERSION = "cl-1.1.1";
+/* China Lingo service worker: network-first app code, cache-first assets, full offline fallback. */
+const VERSION = "cl-1.1.2";
 const SHELL = [
   "./",
   "./index.html",
@@ -46,7 +46,7 @@ self.addEventListener("fetch", e => {
     e.respondWith((async () => {
       const cache = await caches.open(VERSION);
       try {
-        const fresh = await fetch(req);
+        const fresh = await fetch(req, { cache: "no-cache" });
         cache.put("./index.html", fresh.clone());
         return fresh;
       } catch (err) {
@@ -56,6 +56,22 @@ self.addEventListener("fetch", e => {
     return;
   }
 
+  /* app code (js/css/manifest): network-first so updates land immediately; cache when offline */
+  if (/\.(js|css|webmanifest)$/.test(url.pathname)) {
+    e.respondWith((async () => {
+      const cache = await caches.open(VERSION);
+      try {
+        const fresh = await fetch(req, { cache: "no-cache" });
+        if (fresh && fresh.ok) cache.put(req, fresh.clone());
+        return fresh;
+      } catch (err) {
+        return (await cache.match(req, { ignoreSearch: true })) || Response.error();
+      }
+    })());
+    return;
+  }
+
+  /* fonts, icons: cache-first, refresh in background */
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);
     const cached = await cache.match(req, { ignoreSearch: true });
