@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>China Lingo · Supply Chain Mandarin</title>
+<meta name="description" content="Gamified Mandarin for dealing with Chinese suppliers, factories and day-to-day emergencies.">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="China Lingo">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/nunito-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="brand">供应链中文<small>China Lingo</small></div>
+    <div class="stats">
+      <button class="stat s1" id="t-streak" aria-label="Streak">🔥<span id="st-streak">0</span></button>
+      <button class="stat s2" id="t-gems" aria-label="Gems">💎<span id="st-gems">0</span></button>
+      <button class="stat s3" id="t-hearts" aria-label="Hearts">❤️<span id="st-hearts">5</span></button>
+    </div>
+  </div>
+  <div class="voicewarn" id="vw">No Chinese voice found on this device, so audio may sound wrong. Add a Chinese (Mandarin) voice in your device's text-to-speech or spoken-content settings.</div>
+  <main id="view"></main>
+</div>
+<nav><div class="in">
+  <button data-tab="learn" class="on"><span class="i">🏭</span>Learn</button>
+  <button data-tab="practice"><span class="i">🎯</span>Practice</button>
+  <button data-tab="quests"><span class="i">📜</span>Quests</button>
+  <button data-tab="book"><span class="i">📖</span>Phrases</button>
+  <button data-tab="sos" class="sos"><span class="i">🆘</span>SOS</button>
+  <button data-tab="me"><span class="i">📦</span>Me</button>
+</div></nav>
+<div id="overlay"></div><div id="modal"></div><div id="toast"></div>
+<noscript><p style="padding:20px;font-family:sans-serif">China Lingo needs JavaScript turned on.</p></noscript>
+<script src="js/data.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/app.js"></script>
+<script src="js/pwa.js"></script>
+</body>
+</html>

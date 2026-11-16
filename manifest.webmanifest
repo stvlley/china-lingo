@@ -1,0 +1,24 @@
+{
+  "name": "China Lingo: Supply Chain Mandarin",
+  "short_name": "China Lingo",
+  "description": "Gamified Mandarin for suppliers, factories, negotiation, QC, shipping and emergencies.",
+  "id": "./",
+  "start_url": "./#learn",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "lang": "en",
+  "categories": ["education", "business", "travel"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "SOS phrases", "short_name": "SOS", "url": "./#sos", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Practice", "url": "./#practice", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Phrasebook", "url": "./#book", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
