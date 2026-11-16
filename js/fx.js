@@ -32,13 +32,20 @@
   function unlock() {
     applySession();
     const c = ensure();
-    if (!c || unlocked) return;
-    try {
-      const b = c.createBuffer(1, 1, 22050), s = c.createBufferSource();
-      s.buffer = b; s.connect(c.destination); s.start(0);
-      unlocked = true;
-    } catch (e) {}
+    if (c && !(unlocked && c.state === "running")) {
+      try {
+        const b = c.createBuffer(1, 1, 22050), s = c.createBufferSource();
+        s.buffer = b; s.connect(c.destination); s.start(0);
+        unlocked = c.state === "running";
+      } catch (e) {}
+    }
+    /* iOS: the first speech must also start inside a gesture */
+    if (!speechPrimed && "speechSynthesis" in window) {
+      speechPrimed = true;
+      try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {}
+    }
   }
+  let speechPrimed = false;
   ["pointerdown", "touchend", "click", "keydown"].forEach(ev =>
     window.addEventListener(ev, unlock, { capture: true, passive: true }));
   document.addEventListener("visibilitychange", () => {
@@ -104,6 +111,8 @@
     let t = 0;
     for (let i = 2; i < arr.length && i < 8; i += 2) { t += (arr[i - 1] || 60) + (arr[i - 2] || 20); setTimeout(iosTap, t); }
   };
+  /* light tick for every tap/selection */
+  window.tick = function () { window.SFX.tap(); window.buzz(8); };
   window.FX = { unlock, applySession, canVibrate };
 
   /* ---------- speech (Mandarin TTS) ---------- */
@@ -121,13 +130,42 @@
     } catch (e) {}
   }
   if ("speechSynthesis" in window) { pickVoice(); try { speechSynthesis.addEventListener("voiceschanged", pickVoice); } catch (e) {} }
+  /* Safari drops an utterance queued in the same tick as cancel(), so wait a beat when interrupting */
+  let sayTimer = 0;
   window.say = function (text, slow) {
     try {
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = "zh-CN"; if (zhVoice) u.voice = zhVoice;
-      u.rate = slow ? 0.5 : 0.85;
-      speechSynthesis.speak(u);
+      clearTimeout(sayTimer);
+      const go = () => {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = "zh-CN"; if (zhVoice) u.voice = zhVoice;
+        u.rate = slow ? 0.5 : 0.85;
+        speechSynthesis.speak(u);
+      };
+      if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); sayTimer = setTimeout(go, 80); }
+      else go();
     } catch (e) {}
+  };
+  window.hush = function () { try { clearTimeout(sayTimer); speechSynthesis.cancel(); } catch (e) {} };
+
+  /* ---------- speech recognition (speaking exercises) ---------- */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  window.ASR = {
+    supported: !!SR,
+    listen(onDone, onInterim) {
+      const r = new SR();
+      r.lang = "zh-CN"; r.interimResults = true; r.maxAlternatives = 5; r.continuous = false;
+      let finals = [], done = false;
+      const finish = (err) => { if (done) return; done = true; onDone(err, finals); };
+      r.onresult = ev => {
+        const res = ev.results[ev.results.length - 1];
+        const alts = Array.from(res).map(a => a.transcript);
+        if (onInterim) onInterim(alts[0] || "");
+        if (res.isFinal) { finals = alts; try { r.stop(); } catch (e) {} finish(null); }
+      };
+      r.onerror = ev => finish(ev.error || "error");
+      r.onend = () => finish(finals.length ? null : "no-speech");
+      try { r.start(); } catch (e) { finish("start-failed"); }
+      return () => { try { r.stop(); } catch (e) {} };
+    }
   };
 })();

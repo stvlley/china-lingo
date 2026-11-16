@@ -1,5 +1,5 @@
 /* China Lingo service worker: offline app shell + stale-while-revalidate. */
-const VERSION = "cl-1.0.0";
+const VERSION = "cl-1.1.0";
 const SHELL = [
   "./",
   "./index.html",
