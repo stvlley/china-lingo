@@ -1,5 +1,5 @@
 /* China Lingo service worker: network-first app code, cache-first assets, full offline fallback. */
-const VERSION = "cl-1.2.0";
+const VERSION = "cl-1.3.0";
 const AUDIO = "cl-audio"; /* recorded audio: hashed, immutable file names, kept across versions */
 const SHELL = [
   "./",

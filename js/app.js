@@ -13,10 +13,10 @@ UNITS.forEach((u,ui)=>{u.items=u.items.map((r,ii)=>{const chunks=r[0].split(" ")
 const BYID=Object.fromEntries(ALL.map(x=>[x.id,x]));
 
 /* ================= STATE ================= */
-const APP_VERSION="1.2.0";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
+const APP_VERSION="1.3.0";const KEY="cl-v1",MAXH=5,HEART_MS=30*60e3,REFILL=100,FREEZE=50;
 let S;try{S=JSON.parse(localStorage.getItem(KEY))||null}catch(e){S=null}
 if(!S){let old=null;try{old=JSON.parse(localStorage.getItem("scm-v1"))}catch(e){}S=old?{xp:old.xp||0,streak:old.streak||0,last:old.last||"",done:old.done||{},items:old.items||{},addr:old.addr||""}:{}}
-S=Object.assign({xp:0,gems:50,hearts:MAXH,heartTs:Date.now(),streak:0,best:0,last:"",days:[],freezes:0,goal:30,done:{},items:{},addr:"",daily:{d:""},chests:{},ach:{},stats:{lessons:0,perfect:0,practice:0,bestCombo:0},sound:true,haptic:true,silentSound:true,speak:true,noSpeakUntil:0,installDismissed:0},S);
+S=Object.assign({xp:0,gems:50,hearts:MAXH,heartTs:Date.now(),streak:0,best:0,last:"",days:[],freezes:0,goal:30,done:{},items:{},addr:"",daily:{d:""},chests:{},ach:{},stats:{lessons:0,perfect:0,practice:0,bestCombo:0},sound:true,haptic:true,speak:true,noSpeakUntil:0,installDismissed:0},S);
 S.best=Math.max(S.best,S.streak);
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 function today(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
@@ -186,16 +186,25 @@ function meView(){const lv=levelOf(S.xp),a=lvlFloor(lv),b=lvlFloor(lv+1),got=ACH
   <div class="grp">Daily goal</div><div class="seg">${goals.map(g=>`<button data-goal="${g[0]}" class="${S.goal===g[0]?"on":""}">${g[1]}<br>${g[0]} XP</button>`).join("")}</div>
   <div class="grp">Settings</div>
   <div class="tog">🔊 Sound effects<button class="sw ${S.sound?"on":""}" data-tog="sound"></button></div>
-  <div class="tog"><span>🔕 Play sounds in silent mode<br><small style="color:var(--mute);font-weight:700">iPhone ring switch off. Note: pauses other music</small></span><button class="sw ${S.silentSound?"on":""}" data-tog="silentSound"></button></div>
   <div class="tog"><span>📳 Haptics<br><small style="color:var(--mute);font-weight:700">${FX.canVibrate?"Vibration patterns":"iPhone taps (iOS 18+)"}</small></span><button class="sw ${S.haptic?"on":""}" data-tog="haptic"></button></div>
   ${window.ASR&&ASR.supported?`<div class="tog"><span>🎙️ Speaking exercises<br><small style="color:var(--mute);font-weight:700">Uses the microphone</small></span><button class="sw ${S.speak?"on":""}" data-tog="speak"></button></div>`:""}
   <div class="tog"><span>🗣️ Mandarin voice<br><small style="color:var(--mute);font-weight:700">${FX.hasRecordings()?"Studio recordings (ElevenLabs)":"Device text-to-speech"}</small></span><span style="font-size:20px">${FX.hasRecordings()?"✅":"📱"}</span></div>
-  <div style="margin:16px 16px 0"><button class="btn ghost" id="fxtest">▶ Test sound, voice &amp; haptics</button></div>
+  <div style="margin:16px 16px 0"><button class="btn ghost" id="fxtest">🔧 Sound check</button></div>
   ${appCard()}
   <div class="grp">Your data</div>
   <div class="card"><p>Progress lives on this device. To move it to another phone, copy a backup code here and paste it there.</p><div style="display:flex;gap:10px;margin-top:12px"><button class="btn ghost" id="exp" style="font-size:13px">Copy backup</button><button class="btn ghost" id="imp" style="font-size:13px;margin-top:0">Restore</button></div></div>
   <div style="margin:20px 16px"><button class="btn ghost" id="reset" style="color:var(--r)">Reset all progress</button></div>
   <div class="card"><p>Audio uses your device's built-in Chinese voice. Works offline once installed. v${APP_VERSION}</p></div>`}
+function soundCheck(){const res={};
+  const row=(k,ic,t,sub)=>`<div class="sc"><span class="ic">${ic}</span><div class="t"><b>${t}</b><small>${sub}</small><div class="r" id="r-${k}"></div></div><button class="btn blue" data-sc="${k}">Test</button></div>`;
+  modal(`<h3>Sound check</h3><p>Turn the volume up, then tap each Test. If something fails, tap Copy report and paste it to me.</p>
+  <div style="text-align:left">${row("effect","🔔","Sound effect","Built-in chime")}${row("tts","🗣️","Chinese voice (device)","Your phone's Mandarin text-to-speech")}${row("file","🎙️","Recorded voice","ElevenLabs phrase recordings")}${row("hap","📳","Haptics",FX.canVibrate?"Vibration":"iPhone tap (iOS 18+)")}</div>
+  <button class="btn" id="sc-copy" style="margin-top:14px">Copy report</button><button class="btn link" id="sc-x">Close</button>`,true);
+  const show=(k,err,ok)=>{res[k]=err?("FAIL "+err):("OK "+(ok||""));const el=$("#r-"+k);if(el){el.textContent=err?("❌ "+err):(k==="hap"?"✅ Sent. Did you feel it?":"✅ Playing. Did you hear it?");el.style.color=err?"var(--r)":"var(--gd)"}};
+  document.querySelectorAll("[data-sc]").forEach(b=>b.onclick=()=>{const k=b.dataset.sc;$("#r-"+k).textContent="…";
+    if(k==="effect")FX.tests.effect((e,o)=>show(k,e,o));else if(k==="tts")FX.tests.tts((e,o)=>show(k,e,o));else if(k==="file")FX.tests.voiceFile((e,o)=>show(k,e,o));else{buzz([30,60,30]);show(k,null,"sent")}});
+  $("#sc-x").onclick=closeModal;
+  $("#sc-copy").onclick=async()=>{const rep=JSON.stringify({env:FX.env(),results:res,log:FX.log().slice(-15)},null,1);try{await navigator.clipboard.writeText(rep);toast("📋 Report copied. Paste it in the chat")}catch(e){modal(`<h3>Report</h3><textarea style="width:100%;height:220px;font-size:11px" readonly>${esc(rep)}</textarea><button class="btn" id="rp-x">Close</button>`,true);$("#rp-x").onclick=closeModal}}}
 function installCard(){if(!window.PWA||PWA.standalone()||S.installDismissed>Date.now()-7*864e5)return "";if(!PWA.canPrompt()&&!PWA.isIOS())return "";
   return `<div class="card install">${bao("wow",54)}<div style="flex:1"><b>Install China Lingo</b><p>${PWA.isIOS()?"Tap <b>Share</b> ⬆️ then <b>Add to Home Screen</b> for full-screen, offline lessons with sound and haptics.":"Add it to your home screen for full-screen, offline lessons."}</p>${PWA.canPrompt()?`<button class="btn blue" data-install style="margin-top:10px;padding:10px">Install app</button>`:""}</div><button class="x" data-dismiss-install style="font-size:20px;align-self:flex-start">✕</button></div>`}
 function appCard(){if(!window.PWA)return "";if(PWA.standalone())return `<div class="card" style="margin-top:16px"><p>✅ Installed. Running as an app.</p></div>`;
@@ -211,10 +220,10 @@ function bindAll(v){
   v.querySelectorAll("[data-go]").forEach(b=>b.onclick=()=>{tab=b.dataset.go;render()});
   v.querySelectorAll("[data-ach]").forEach(b=>b.onclick=()=>{const a=ACH.find(x=>x.id===b.dataset.ach);modal(`<div style="font-size:70px;${S.ach[a.id]?"":"filter:grayscale(1);opacity:.5"}">${a.ic}</div><h3>${esc(a.t)}</h3><p>${esc(a.d)}${S.ach[a.id]?`<br>Unlocked ${S.ach[a.id]}`:"<br>Locked"}</p><button class="btn" id="ac">OK</button>`,true);$("#ac").onclick=closeModal});
   v.querySelectorAll("[data-goal]").forEach(b=>b.onclick=()=>{S.goal=+b.dataset.goal;const d=D();d.q[0].goal=S.goal;d.q[0].t=`Earn ${S.goal} XP`;save();tick();render()});
-  v.querySelectorAll("[data-tog]").forEach(b=>b.onclick=()=>{S[b.dataset.tog]=!S[b.dataset.tog];if(b.dataset.tog==="speak")S.noSpeakUntil=0;save();FX.applySession();tick();if(b.dataset.tog==="haptic"&&S.haptic)buzz(20);render()});
+  v.querySelectorAll("[data-tog]").forEach(b=>b.onclick=()=>{S[b.dataset.tog]=!S[b.dataset.tog];if(b.dataset.tog==="speak")S.noSpeakUntil=0;save();tick();if(b.dataset.tog==="haptic"&&S.haptic)buzz(20);render()});
   v.querySelectorAll("[data-install]").forEach(b=>b.onclick=()=>PWA.prompt().then(()=>render()));
   v.querySelectorAll("[data-dismiss-install]").forEach(b=>b.onclick=()=>{S.installDismissed=Date.now();save();render()});
-  const ft=v.querySelector("#fxtest");if(ft)ft.onclick=()=>{SFX.ok();buzz([20,60,20]);setTimeout(SFX.combo,450);setTimeout(()=>say("你好，欢迎！"),1100);const st=FX.state();toast(`Sound ${S.sound?"on":"off"} (${st.ctx}) · Voice: ${st.recordings?"recorded":"device"} · Haptics ${S.haptic?(FX.canVibrate?"vibrate":"iPhone tap"):"off"}`)};
+  const ft=v.querySelector("#fxtest");if(ft)ft.onclick=soundCheck;
   const ex=v.querySelector("#exp");if(ex)ex.onclick=async()=>{const code="CL1."+btoa(unescape(encodeURIComponent(JSON.stringify(S))));try{await navigator.clipboard.writeText(code);toast("📋 Backup code copied")}catch(e){modal(`<h3>Backup code</h3><p>Copy this text:</p><textarea style="width:100%;height:120px;font-size:11px" readonly>${esc(code)}</textarea><button class="btn" id="bk">Done</button>`,true);$("#bk").onclick=closeModal}};
   const im=v.querySelector("#imp");if(im)im.onclick=()=>{modal(`<h3>Restore progress</h3><p>Paste a backup code. This replaces progress on this device.</p><textarea id="impt" style="width:100%;height:110px;font-size:12px;border:2px solid var(--line);border-radius:12px;padding:8px"></textarea><button class="btn" id="impy" style="margin-top:12px">Restore</button><button class="btn link" id="impn">Cancel</button>`,true);$("#impn").onclick=closeModal;$("#impy").onclick=()=>{try{const t=$("#impt").value.trim();const o=JSON.parse(decodeURIComponent(escape(atob(t.replace(/^CL1\./,"")))));if(typeof o.xp!=="number")throw 0;localStorage.setItem(KEY,JSON.stringify(o));location.reload()}catch(e){toast("❌ That code didn't work");buzz([40,50,40])}}};
   const bh=v.querySelector("#buy-h");if(bh)bh.onclick=()=>{S.gems-=REFILL;S.hearts=MAXH;S.heartTs=Date.now();save();SFX.coin();toast("❤️ Hearts refilled!");render()};

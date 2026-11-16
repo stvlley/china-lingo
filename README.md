@@ -60,9 +60,10 @@ Until recordings exist, the app uses synthesized effects and the device's Chines
 
 ## Sound & haptics notes
 
+- All sound plays through HTML media playback (like a video), so it works with the iPhone in silent mode and doesn't depend on Web Audio. Built-in effects are rendered to WAV in the browser; ElevenLabs files replace them.
 - Audio unlocks on your first tap (browsers require a gesture).
-- iPhone: "Play sounds in silent mode" (Me tab) uses `navigator.audioSession` (iOS 17+) so effects play with the ring switch off. Turn it off if you want effects to respect the switch and not pause your music.
 - iPhone haptics need iOS 18+ (Safari has no Vibration API; the app uses the system switch-control tap). Android uses `navigator.vibrate`.
+- **Me → Sound check** tests each audio path on the device and can copy a diagnostic report.
 - Pronunciation uses the device's built-in Chinese voice. For best quality on iPhone: Settings → Accessibility → Spoken Content → Voices → Chinese (China mainland) → download an Enhanced/Premium voice.
 
 ## Adding content

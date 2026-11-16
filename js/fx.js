@@ -1,148 +1,127 @@
-/* China Lingo: sound, voice and haptics engine.
+/* China Lingo: sound, voice and haptics engine (v1.3)
  *
- * Audio sources, best first:
- *   1. Recorded files from audio/index.json (ElevenLabs sound effects + Mandarin phrase recordings)
- *   2. Fallbacks: synthesized effects (Web Audio oscillators) and the device's Chinese TTS voice
- *
- * iPhone notes:
- *   - Web Audio only starts inside a user gesture; we resume on every gesture until it is running,
- *     and never schedule sounds against a suspended clock (that was the "no sound" bug).
- *   - navigator.audioSession "playback" (iOS 17+) lets effects play with the ring switch on silent.
- *   - Phrase recordings play through one <audio> element that is unlocked on the first tap,
- *     so later playback (e.g. auto-play on a new card) is allowed.
- *   - Safari has no Vibration API; iOS 18+ gives a system tap when a switch checkbox is toggled.
+ * Everything plays through HTML <audio> elements ("media playback"), not Web Audio:
+ *   - On iPhone, Web Audio is muted by the silent switch / silent mode and needs a running
+ *     AudioContext; media elements play like a video does and are far more reliable.
+ *   - A pool of <audio> elements is unlocked on the first tap, so sounds triggered a moment
+ *     later (combo banner, auto-play of a new phrase) are still allowed.
+ *   - Built-in sound effects are rendered once to WAV files in the browser (OfflineAudioContext),
+ *     then played like any other file. ElevenLabs files from audio/index.json replace them.
+ *   - Web Audio is only a last-resort fallback if a media element refuses to play.
+ *   - Mandarin: recorded phrase files when present, else the device's Chinese TTS voice.
  */
 (function () {
   "use strict";
-  const AC = window.AudioContext || window.webkitAudioContext;
   const setting = (k, d) => (typeof S !== "undefined" && S && k in S ? S[k] : d);
-  let ctx = null, out = null;
+  const LOG = [];
+  const log = m => { LOG.push(new Date().toISOString().slice(11, 19) + " " + m); if (LOG.length > 60) LOG.shift(); };
 
-  /* ---------- tiny silent WAV (used to unlock media elements) ---------- */
-  const SILENT = (() => {
-    const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
-    const w = (o, s) => [...s].forEach((c, i) => b[o + i] = c.charCodeAt(0));
-    w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true);
-    b.fill(128, 44);
-    let s = ""; b.forEach(x => s += String.fromCharCode(x));
-    return "data:audio/wav;base64," + btoa(s);
-  })();
+  /* ---------- WAV encoding ---------- */
+  function wavFromFloat(ch, rate) {
+    const n = ch.length, b = new ArrayBuffer(44 + n * 2), v = new DataView(b);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) { const s = Math.max(-1, Math.min(1, ch[i])); v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true); }
+    return new Blob([b], { type: "audio/wav" });
+  }
+  const SILENT = URL.createObjectURL(wavFromFloat(new Float32Array(2205), 22050));
 
-  function applySession() {
-    try { if (navigator.audioSession) navigator.audioSession.type = setting("silentSound", true) ? "playback" : "ambient"; } catch (e) {}
-  }
-  function ensure() {
-    if (!AC) return null;
-    if (!ctx) {
-      try { ctx = new AC({ latencyHint: "interactive" }); } catch (e) { ctx = new AC(); }
-      const comp = ctx.createDynamicsCompressor();
-      comp.threshold.value = -12; comp.ratio.value = 3;
-      out = ctx.createGain(); out.gain.value = 0.9;
-      out.connect(comp).connect(ctx.destination);
-    }
-    return ctx;
-  }
-  /* run fn once the context is running (or give up and use the fallback) */
-  function whenRunning(fn, fallback) {
-    const c = ensure();
-    if (!c) { fallback && fallback(); return; }
-    if (c.state === "running") { fn(c); return; }
-    c.resume().then(() => { c.state === "running" ? fn(c) : fallback && fallback(); }, () => fallback && fallback());
-  }
-
-  /* ---------- voice element (phrase recordings) ---------- */
-  const voiceEl = new Audio();
-  voiceEl.preload = "auto";
+  /* ---------- <audio> pool ---------- */
+  const POOL = Array.from({ length: 6 }, () => { const a = new Audio(); a.preload = "auto"; a.setAttribute("playsinline", ""); return a; });
+  const voiceEl = new Audio(); voiceEl.preload = "auto"; voiceEl.setAttribute("playsinline", "");
   try { voiceEl.preservesPitch = true; voiceEl.webkitPreservesPitch = true; } catch (e) {}
-  let voiceUnlocked = false, speechPrimed = false;
+  let unlocked = false, rr = 0, lastErr = "";
 
   function unlock() {
-    applySession();
-    const c = ensure();
-    if (c && c.state !== "running") {
-      c.resume().catch(() => {});
-      try { const b = c.createBuffer(1, 1, 22050), s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0); } catch (e) {}
-    }
-    if (!voiceUnlocked) {
-      voiceUnlocked = true;
-      try { voiceEl.src = SILENT; const p = voiceEl.play(); p && p.then(() => voiceEl.pause(), () => { voiceUnlocked = false; }); } catch (e) { voiceUnlocked = false; }
-    }
-    if (!speechPrimed && "speechSynthesis" in window && !hasRecordings()) {
-      speechPrimed = true;
-      try { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } catch (e) {}
-    }
-    loadSfxBuffers();
-  }
-  ["pointerdown", "touchend", "click", "keydown"].forEach(ev => window.addEventListener(ev, unlock, { capture: true, passive: true }));
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && ctx && ctx.state !== "running") ctx.resume().catch(() => {}); });
-
-  /* ---------- recorded audio index ---------- */
-  let INDEX = null;
-  const hasRecordings = () => !!(INDEX && INDEX.zh && Object.keys(INDEX.zh).length);
-  const ready = fetch("audio/index.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).then(j => { INDEX = j; }).catch(() => {});
-
-  const buffers = {};
-  let loadingSfx = false;
-  function loadSfxBuffers() {
-    if (loadingSfx || !INDEX || !INDEX.sfx) return;
-    const c = ensure(); if (!c) return;
-    loadingSfx = true;
-    Object.entries(INDEX.sfx).forEach(([name, url]) => {
-      fetch(url).then(r => r.arrayBuffer()).then(ab => new Promise((res, rej) => c.decodeAudioData(ab, res, rej)))
-        .then(buf => { buffers[name] = buf; }).catch(() => {});
+    if (unlocked) return;
+    unlocked = true;
+    [...POOL, voiceEl].forEach(a => {
+      try { a.src = SILENT; const p = a.play(); p && p.then(() => a.pause(), e => { unlocked = false; lastErr = "unlock: " + e.name; log(lastErr); }); }
+      catch (e) { unlocked = false; }
     });
+    log("unlock attempted");
+    renderSynth();
   }
-  ready.then(() => { if (ctx) loadSfxBuffers(); });
+  ["touchend", "click", "keydown", "pointerup"].forEach(ev => window.addEventListener(ev, unlock, { capture: true, passive: true }));
 
-  function playFile(name, gain) {
-    const url = INDEX.sfx[name];
-    const html = () => { try { const a = new Audio(url); a.volume = Math.min(1, gain); a.play().catch(() => {}); } catch (e) {} };
-    if (!buffers[name]) return html();
-    whenRunning(c => {
-      const src = c.createBufferSource(), g = c.createGain();
-      src.buffer = buffers[name]; g.gain.value = gain;
-      src.connect(g).connect(out); src.start();
-    }, html);
+  function playUrl(url, label) {
+    const a = POOL[rr++ % POOL.length];
+    try {
+      a.pause(); a.src = url; a.currentTime = 0;
+      const p = a.play();
+      if (p) p.then(() => log("played " + label), e => { lastErr = label + ": " + e.name + " " + e.message; log(lastErr); webAudioFallback(label); });
+    } catch (e) { lastErr = label + ": " + e.message; log(lastErr); webAudioFallback(label); }
   }
 
-  /* ---------- synthesized fallback effects ---------- */
-  function note(c, f, t0, dur, { type = "sine", g = 0.2, layer = null, bend = 0 } = {}) {
-    const env = c.createGain();
-    env.gain.setValueAtTime(0.0001, t0);
-    env.gain.exponentialRampToValueAtTime(g, t0 + 0.012);
-    env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    env.connect(out);
-    const mk = (tp, det) => {
-      const o = c.createOscillator(); o.type = tp; o.frequency.setValueAtTime(f, t0);
-      if (bend) o.frequency.exponentialRampToValueAtTime(f * bend, t0 + dur);
-      o.detune.value = det; o.connect(env); o.start(t0); o.stop(t0 + dur + 0.05);
-    };
-    mk(type, 0); if (layer) mk(layer, 7);
-  }
-  const bell = { type: "sine", layer: "triangle", g: 0.22 };
+  /* ---------- built-in effects: synthesized once, rendered to WAV ---------- */
+  const bell = { type: "sine", layer: "triangle", g: 0.3 };
   const SYNTH = {
-    tap: [[1400, 0, 0.04, { type: "sine", g: 0.05 }]],
-    ok: [[880, 0, 0.16, bell], [1318.5, 0.08, 0.32, bell]],
-    bad: [[196, 0, 0.22, { type: "square", g: 0.08, bend: 0.8 }], [155.6, 0.12, 0.3, { type: "square", g: 0.08, bend: 0.8 }]],
-    combo: [[784, 0, 0.12, bell], [988, 0.07, 0.12, bell], [1175, 0.14, 0.12, bell], [1568, 0.21, 0.35, bell]],
-    heart: [[440, 0, 0.18, { type: "triangle", g: 0.2, bend: 0.6 }], [330, 0.14, 0.3, { type: "triangle", g: 0.2, bend: 0.6 }]],
-    coin: [[1318.5, 0, 0.08, { type: "square", g: 0.06 }], [1975.5, 0.07, 0.3, { type: "square", g: 0.06 }]],
-    whoosh: [[300, 0, 0.18, { type: "sine", g: 0.08, bend: 3 }]],
-    fanfare: [[523.3, 0, 0.14, bell], [659.3, 0.12, 0.14, bell], [784, 0.24, 0.14, bell], [1046.5, 0.36, 0.5, bell], [784, 0.36, 0.5, { type: "triangle", g: 0.1 }], [1318.5, 0.62, 0.6, bell]],
+    tap: [[1500, 0, 0.05, { type: "sine", g: 0.18 }]],
+    ok: [[880, 0, 0.16, bell], [1318.5, 0.08, 0.36, bell]],
+    bad: [[196, 0, 0.22, { type: "square", g: 0.12, bend: 0.8 }], [155.6, 0.12, 0.3, { type: "square", g: 0.12, bend: 0.8 }]],
+    combo: [[784, 0, 0.12, bell], [988, 0.07, 0.12, bell], [1175, 0.14, 0.12, bell], [1568, 0.21, 0.4, bell]],
+    heart: [[440, 0, 0.18, { type: "triangle", g: 0.3, bend: 0.6 }], [330, 0.14, 0.32, { type: "triangle", g: 0.3, bend: 0.6 }]],
+    coin: [[1318.5, 0, 0.08, { type: "square", g: 0.09 }], [1975.5, 0.07, 0.32, { type: "square", g: 0.09 }]],
+    whoosh: [[300, 0, 0.2, { type: "sine", g: 0.16, bend: 3 }]],
+    fanfare: [[523.3, 0, 0.14, bell], [659.3, 0.12, 0.14, bell], [784, 0.24, 0.14, bell], [1046.5, 0.36, 0.5, bell], [784, 0.36, 0.5, { type: "triangle", g: 0.14 }], [1318.5, 0.62, 0.6, bell]],
     level: [392, 523.3, 659.3, 784, 1046.5, 1318.5, 1568].map((f, i) => [f, i * 0.08, i === 6 ? 0.6 : 0.14, bell])
   };
   SYNTH.chest = SYNTH.coin; SYNTH.streak = SYNTH.combo;
-  function playSynth(name) {
+  function schedule(c, dest, seq, t0) {
+    seq.forEach(([f, at, dur, { type = "sine", g = 0.2, layer = null, bend = 0 } = {}]) => {
+      const st = t0 + at, env = c.createGain();
+      env.gain.setValueAtTime(0.0001, st); env.gain.exponentialRampToValueAtTime(g, st + 0.012); env.gain.exponentialRampToValueAtTime(0.0001, st + dur);
+      env.connect(dest);
+      [[type, 0], ...(layer ? [[layer, 7]] : [])].forEach(([tp, det]) => {
+        const o = c.createOscillator(); o.type = tp; o.frequency.setValueAtTime(f, st);
+        if (bend) o.frequency.exponentialRampToValueAtTime(f * bend, st + dur);
+        o.detune.value = det; o.connect(env); o.start(st); o.stop(st + dur + 0.05);
+      });
+    });
+  }
+  const synthUrls = {};
+  let rendering = false;
+  function renderSynth() {
+    if (rendering) return; rendering = true;
+    const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OAC) { log("no OfflineAudioContext"); return; }
+    const rate = 44100;
+    Object.entries(SYNTH).forEach(([name, seq]) => {
+      if (synthUrls[name]) return;
+      const len = Math.max(...seq.map(([, at, dur]) => at + dur)) + 0.12;
+      try {
+        const c = new OAC(1, Math.ceil(len * rate), rate);
+        schedule(c, c.destination, seq, 0.005);
+        const done = buf => { synthUrls[name] = URL.createObjectURL(wavFromFloat(buf.getChannelData(0), rate)); };
+        const p = c.startRendering();
+        if (p && p.then) p.then(done, e => log("render " + name + " " + e)); else c.oncomplete = ev => done(ev.renderedBuffer);
+      } catch (e) { log("render fail " + name + " " + e.message); }
+    });
+  }
+  renderSynth();
+
+  /* ---------- last resort: live Web Audio ---------- */
+  let ctx = null;
+  function webAudioFallback(name) {
     const seq = SYNTH[name]; if (!seq) return;
-    whenRunning(c => { const now = c.currentTime + 0.02; seq.forEach(([f, at, dur, opt]) => note(c, f, now + at, dur, opt)); });
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      ctx = ctx || new AC();
+      const go = () => schedule(ctx, ctx.destination, seq, ctx.currentTime + 0.02);
+      ctx.state === "running" ? go() : ctx.resume().then(() => ctx.state === "running" && go(), () => {});
+    } catch (e) {}
   }
 
-  const GAIN = { tap: 0.35, whoosh: 0.5 };
+  /* ---------- recorded audio index (ElevenLabs) ---------- */
+  let INDEX = null;
+  const hasRecordings = () => !!(INDEX && INDEX.zh && Object.keys(INDEX.zh).length);
+  const ready = fetch("audio/index.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).then(j => { INDEX = j; log(j ? "audio index loaded" : "no audio index"); }).catch(() => log("no audio index"));
+
   function sfx(name) {
     if (!setting("sound", true)) return;
-    if (INDEX && INDEX.sfx && INDEX.sfx[name]) playFile(name, GAIN[name] || 0.9);
-    else playSynth(name);
+    const url = (INDEX && INDEX.sfx && INDEX.sfx[name]) || synthUrls[name];
+    if (url) playUrl(url, name); else webAudioFallback(name);
   }
   window.SFX = {};
   ["tap", "ok", "bad", "combo", "heart", "coin", "whoosh", "fanfare", "level", "chest", "streak"].forEach(n => window.SFX[n] = () => sfx(n));
@@ -168,39 +147,43 @@
   window.tick = function () { window.SFX.tap(); window.buzz(8); };
 
   /* ---------- Mandarin voice ---------- */
-  let zhVoice = null;
+  let zhVoice = null, voiceCount = 0;
   function pickVoice() {
     try {
       const w = document.getElementById("vw");
-      if (hasRecordings()) { if (w) w.style.display = "none"; }
-      const v = speechSynthesis.getVoices(); if (!v.length) return;
+      const v = speechSynthesis.getVoices(); voiceCount = v.length;
       const zh = v.filter(x => /^(zh|cmn)/i.test(x.lang));
       zhVoice = zh.find(x => /zh[-_]CN/i.test(x.lang) && /premium|enhanced|natural|neural/i.test(x.name))
         || zh.find(x => /zh[-_]CN/i.test(x.lang) && x.localService) || zh.find(x => /zh[-_]CN/i.test(x.lang)) || zh[0] || null;
-      if (w) w.style.display = zhVoice || hasRecordings() ? "none" : "block";
+      if (w) w.style.display = (zhVoice || hasRecordings() || !v.length) ? "none" : "block";
     } catch (e) {}
   }
   if ("speechSynthesis" in window) { pickVoice(); try { speechSynthesis.addEventListener("voiceschanged", pickVoice); } catch (e) {} }
   ready.then(pickVoice);
 
   let sayTimer = 0;
-  function ttsSay(text, slow) {
+  function ttsSay(text, slow, cb) {
+    if (!("speechSynthesis" in window)) { cb && cb("no speechSynthesis"); return; }
     try {
       clearTimeout(sayTimer);
-      const go = () => { const u = new SpeechSynthesisUtterance(text); u.lang = "zh-CN"; if (zhVoice) u.voice = zhVoice; u.rate = slow ? 0.5 : 0.85; speechSynthesis.speak(u); };
+      const go = () => {
+        const u = new SpeechSynthesisUtterance(text); u.lang = "zh-CN"; if (zhVoice) u.voice = zhVoice; u.rate = slow ? 0.5 : 0.85; u.volume = 1;
+        u.onstart = () => { log("tts start"); cb && cb(null, "started"); cb = null; };
+        u.onerror = e => { log("tts error " + e.error); cb && cb(e.error); cb = null; };
+        speechSynthesis.speak(u);
+        if (speechSynthesis.paused) speechSynthesis.resume();
+      };
       if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); sayTimer = setTimeout(go, 80); } else go();
-    } catch (e) {}
+    } catch (e) { cb && cb(e.message); }
   }
   window.say = function (text, slow) {
     const file = INDEX && INDEX.zh && INDEX.zh[text];
     if (!file) return ttsSay(text, slow);
     try { speechSynthesis.cancel(); } catch (e) {}
     try {
-      voiceEl.pause();
-      voiceEl.src = file;
-      voiceEl.playbackRate = slow ? 0.7 : 1;
+      voiceEl.pause(); voiceEl.src = file; voiceEl.playbackRate = slow ? 0.7 : 1;
       const p = voiceEl.play();
-      p && p.catch(err => { if (err && err.name !== "AbortError") ttsSay(text, slow); });
+      p && p.catch(err => { if (err && err.name !== "AbortError") { log("voice file " + err.name); ttsSay(text, slow); } });
     } catch (e) { ttsSay(text, slow); }
   };
   window.hush = function () { try { clearTimeout(sayTimer); speechSynthesis.cancel(); } catch (e) {} try { voiceEl.pause(); } catch (e) {} };
@@ -227,10 +210,39 @@
     }
   };
 
+  /* ---------- on-device sound check ---------- */
+  function testEffect(cb) {
+    const url = synthUrls.ok; if (!url) return cb("effect not rendered yet");
+    const a = new Audio(url); a.setAttribute("playsinline", "");
+    a.play().then(() => cb(null, "played"), e => cb(e.name + ": " + e.message));
+  }
+  function testVoiceFile(cb) {
+    if (!hasRecordings()) return cb("no recordings yet");
+    const a = new Audio(Object.values(INDEX.zh)[0]);
+    a.play().then(() => cb(null, "played"), e => cb(e.name + ": " + e.message));
+  }
+  function testTTS(cb) {
+    let answered = false;
+    ttsSay("你好，欢迎！", false, (err, ok) => { answered = true; cb(err, ok); });
+    setTimeout(() => { if (!answered) cb("no start event after 3s (speech engine silent)"); }, 3000);
+  }
+  function env() {
+    const ua = navigator.userAgent, ios = (ua.match(/OS (\d+)_(\d+)/) || [])[0];
+    return {
+      app: typeof APP_VERSION !== "undefined" ? APP_VERSION : "?",
+      device: ios ? "iOS " + ios.slice(3).replace("_", ".") : (/Android/.test(ua) ? "Android" : "other"),
+      standalone: matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+      unlocked, effectsRendered: Object.keys(synthUrls).length, recordings: hasRecordings(),
+      ttsVoices: voiceCount, zhVoice: zhVoice ? zhVoice.name : "none",
+      vibrate: canVibrate, lastError: lastErr || "none"
+    };
+  }
+
   window.FX = {
-    unlock, applySession, canVibrate, ready,
-    hasRecordings, hasSfx: () => !!(INDEX && INDEX.sfx && Object.keys(INDEX.sfx).length),
+    unlock, canVibrate, ready, hasRecordings,
+    hasSfx: () => !!(INDEX && INDEX.sfx && Object.keys(INDEX.sfx).length),
     audioIndex: () => INDEX,
-    state: () => ({ ctx: ctx ? ctx.state : "none", recordings: hasRecordings(), sfxLoaded: Object.keys(buffers).length })
+    state: () => ({ ctx: unlocked ? "unlocked" : "locked", recordings: hasRecordings(), sfxLoaded: Object.keys(synthUrls).length }),
+    tests: { effect: testEffect, voiceFile: testVoiceFile, tts: testTTS }, env, log: () => LOG.slice()
   };
 })();

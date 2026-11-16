@@ -263,3 +263,6 @@ canvas.conf{position:fixed;inset:0;pointer-events:none;z-index:55}
 .micl{font-weight:900;color:var(--mute)}
 .heard{min-height:44px;margin-top:12px;font-weight:700;font-size:16px;line-height:1.5}
 .heard .zh{font-size:22px;color:var(--ink)}
+.sc{display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:2px solid var(--line)}
+.sc .ic{font-size:26px}.sc .t{flex:1}.sc b{display:block;font-size:15px}.sc small{color:var(--mute);font-weight:700;font-size:12px}
+.sc .r{font-size:13px;font-weight:800;margin-top:2px}.sc .btn{width:auto;padding:8px 14px;font-size:13px}
